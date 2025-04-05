@@ -56,19 +56,15 @@
             color: #ff0000;
             margin: 10px 0;
         }
+        .success {
+            color: #4CAF50;
+            margin: 10px 0;
+        }
         .instructions {
             background-color: #f8f9fa;
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
-        }
-        .language-select {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
         }
     </style>
 </head>
@@ -79,83 +75,104 @@
         <div class="instructions">
             <h3>Instructies:</h3>
             <ol>
-                <li>Selecteer de taal waarin u gaat spreken</li>
-                <li>Klik op "Start Opname" en geef toestemming voor de microfoon</li>
-                <li>Spreek duidelijk in de geselecteerde taal</li>
-                <li>De vertaling verschijnt automatisch</li>
-                <li>Klik op "Stop Opname" als u klaar bent</li>
+                <li>Klik op "Controleer Microfoon" om toestemming te geven</li>
+                <li>Als dat lukt, klik op "Start Opname"</li>
+                <li>Spreek duidelijk in een willekeurige taal</li>
+                <li>Of gebruik het tekstveld onderaan om tekst te typen</li>
             </ol>
         </div>
 
-        <select id="sourceLanguage" class="language-select">
-            <option value="en-US">Engels</option>
-            <option value="fr-FR">Frans</option>
-            <option value="de-DE">Duits</option>
-            <option value="es-ES">Spaans</option>
-            <option value="it-IT">Italiaans</option>
-            <option value="nl-NL">Nederlands</option>
-        </select>
-
-        <button id="startButton">Start Opname</button>
-        <button id="stopButton" disabled>Stop Opname</button>
+        <button id="checkMicButton">1. Controleer Microfoon</button>
+        <button id="startButton" disabled>2. Start Opname</button>
+        <button id="stopButton" disabled>3. Stop Opname</button>
         
         <div id="output">
-            <p class="status">Klik op 'Start Opname' om te beginnen...</p>
+            <p class="status">Klik eerst op 'Controleer Microfoon'...</p>
         </div>
 
-        <textarea id="manualInput" placeholder="Of typ hier uw tekst om te vertalen..."></textarea>
+        <div class="instructions">
+            <h3>Alternatief: Typ uw tekst</h3>
+            <p>Als spraakherkenning niet werkt, gebruik dan het tekstveld hieronder:</p>
+        </div>
+        <textarea id="manualInput" placeholder="Typ hier uw tekst om te vertalen..."></textarea>
         <button id="translateButton">Vertaal Getypte Tekst</button>
     </div>
 
     <script>
+        const checkMicButton = document.getElementById('checkMicButton');
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
         const output = document.getElementById('output');
-        const sourceLanguage = document.getElementById('sourceLanguage');
         const manualInput = document.getElementById('manualInput');
         const translateButton = document.getElementById('translateButton');
         let recognition = null;
 
-        // Controleer of spraakherkenning beschikbaar is
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-        } else if ('SpeechRecognition' in window) {
-            recognition = new SpeechRecognition();
+        // Controleer microfoontoestemming
+        async function checkMicrophonePermission() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop());
+                output.innerHTML = '<p class="success">✓ Microfoon toegang verleend! U kunt nu op "Start Opname" klikken.</p>';
+                startButton.disabled = false;
+                checkMicButton.disabled = true;
+                initializeSpeechRecognition();
+                return true;
+            } catch (err) {
+                output.innerHTML = `
+                    <p class="error">× Microfoon toegang geweigerd of niet beschikbaar.</p>
+                    <p>Tips:</p>
+                    <ul>
+                        <li>Controleer of u toestemming heeft gegeven voor de microfoon</li>
+                        <li>Gebruik Chrome (Android) of Safari (iPhone)</li>
+                        <li>Of gebruik het tekstveld onderaan om tekst te typen</li>
+                    </ul>
+                `;
+                return false;
+            }
         }
 
-        if (recognition) {
-            recognition.continuous = true;
-            recognition.interimResults = true;
+        function initializeSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+            } else if ('SpeechRecognition' in window) {
+                recognition = new SpeechRecognition();
+            }
 
-            recognition.onstart = function() {
+            if (recognition) {
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'auto';
+
+                recognition.onstart = function() {
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+                    output.innerHTML = '<p class="status">Luisteren...</p>';
+                };
+
+                recognition.onend = function() {
+                    startButton.disabled = false;
+                    stopButton.disabled = true;
+                };
+
+                recognition.onresult = function(event) {
+                    const result = event.results[event.results.length - 1];
+                    const transcript = result[0].transcript;
+                    if (result.isFinal) {
+                        translateText(transcript);
+                    }
+                };
+
+                recognition.onerror = function(event) {
+                    console.error('Spraakherkenningsfout:', event.error);
+                    output.innerHTML = `<p class="error">Fout: ${event.error}. Probeer de getypte invoer hieronder.</p>`;
+                    startButton.disabled = false;
+                    stopButton.disabled = true;
+                };
+            } else {
+                output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund. Gebruik de getypte invoer hieronder.</p>';
                 startButton.disabled = true;
-                stopButton.disabled = false;
-                output.innerHTML = '<p class="status">Luisteren...</p>';
-            };
-
-            recognition.onend = function() {
-                startButton.disabled = false;
                 stopButton.disabled = true;
-            };
-
-            recognition.onresult = function(event) {
-                const result = event.results[event.results.length - 1];
-                const transcript = result[0].transcript;
-                if (result.isFinal) {
-                    translateText(transcript);
-                }
-            };
-
-            recognition.onerror = function(event) {
-                console.error('Spraakherkenningsfout:', event.error);
-                output.innerHTML = `<p class="error">Fout: ${event.error}. Probeer de getypte invoer hieronder.</p>`;
-                startButton.disabled = false;
-                stopButton.disabled = true;
-            };
-        } else {
-            output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund. Gebruik de getypte invoer hieronder.</p>';
-            startButton.disabled = true;
-            stopButton.disabled = true;
+            }
         }
 
         async function translateText(text) {
@@ -174,9 +191,11 @@
             }
         }
 
+        // Event Listeners
+        checkMicButton.onclick = checkMicrophonePermission;
+
         startButton.onclick = function() {
             if (recognition) {
-                recognition.lang = sourceLanguage.value;
                 recognition.start();
             }
         };
@@ -184,4 +203,28 @@
         stopButton.onclick = function() {
             if (recognition) {
                 recognition.stop();
-                output.innerHTML +=
+                output.innerHTML += '<p class="status">Opname gestopt.</p>';
+            }
+        };
+
+        translateButton.onclick = function() {
+            const text = manualInput.value.trim();
+            if (text) {
+                translateText(text);
+            }
+        };
+
+        // Automatische vertaling bij typen
+        let typingTimer;
+        manualInput.addEventListener('input', function() {
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => {
+                const text = manualInput.value.trim();
+                if (text) {
+                    translateText(text);
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
