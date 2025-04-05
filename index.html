@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-time Vertaler</title>
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -27,6 +28,7 @@
             cursor: pointer;
             font-size: 16px;
             margin: 10px 0;
+            width: 100%;
         }
         button:disabled {
             background-color: #cccccc;
@@ -42,13 +44,36 @@
             color: #666;
             font-style: italic;
         }
+        .error {
+            color: #ff0000;
+            margin: 10px 0;
+        }
+        .instructions {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Real-time Spraak Vertaler</h1>
+        
+        <div class="instructions">
+            <h3>Instructies:</h3>
+            <ol>
+                <li>Klik op "Start Opname" om te beginnen</li>
+                <li>Geef toestemming voor de microfoon als daarom wordt gevraagd</li>
+                <li>Spreek duidelijk in een willekeurige taal</li>
+                <li>De vertaling verschijnt automatisch</li>
+                <li>Klik op "Stop Opname" als u klaar bent</li>
+            </ol>
+        </div>
+
         <button id="startButton">Start Opname</button>
         <button id="stopButton" disabled>Stop Opname</button>
+        
         <div id="output">
             <p class="status">Klik op 'Start Opname' om te beginnen...</p>
         </div>
@@ -60,7 +85,30 @@
         const output = document.getElementById('output');
         let recognition;
 
-        if ('webkitSpeechRecognition' in window) {
+        async function checkMicrophonePermission() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (err) {
+                console.error('Microfoon toegang geweigerd:', err);
+                return false;
+            }
+        }
+
+        async function initializeSpeechRecognition() {
+            if (!('webkitSpeechRecognition' in window)) {
+                output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund in deze browser. Probeer Chrome of Edge.</p>';
+                startButton.disabled = true;
+                return;
+            }
+
+            const hasPermission = await checkMicrophonePermission();
+            if (!hasPermission) {
+                output.innerHTML = '<p class="error">Microfoon toegang is vereist voor deze app. Geef toestemming via uw browser instellingen.</p>';
+                return;
+            }
+
             recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
@@ -69,33 +117,31 @@
             recognition.onresult = function(event) {
                 const result = event.results[event.results.length - 1];
                 const transcript = result[0].transcript;
-                
-                // Vertaal de tekst naar het Nederlands
                 translateText(transcript);
             };
 
             recognition.onerror = function(event) {
                 console.error('Spraakherkenningsfout:', event.error);
                 output.innerHTML += `<p class="error">Fout: ${event.error}</p>`;
+                stopRecording();
             };
-        } else {
-            output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund in deze browser.</p>';
-            startButton.disabled = true;
         }
 
-        startButton.onclick = function() {
+        function startRecording() {
             recognition.start();
             startButton.disabled = true;
             stopButton.disabled = false;
             output.innerHTML = '<p class="status">Luisteren...</p>';
-        };
+        }
 
-        stopButton.onclick = function() {
-            recognition.stop();
+        function stopRecording() {
+            if (recognition) {
+                recognition.stop();
+            }
             startButton.disabled = false;
             stopButton.disabled = true;
             output.innerHTML += '<p class="status">Opname gestopt.</p>';
-        };
+        }
 
         async function translateText(text) {
             try {
@@ -112,6 +158,13 @@
                 output.innerHTML += `<p class="error">Vertalingsfout: ${error.message}</p>`;
             }
         }
+
+        // Initialize the app
+        initializeSpeechRecognition();
+
+        // Event listeners
+        startButton.onclick = startRecording;
+        stopButton.onclick = stopRecording;
     </script>
 </body>
 </html>
