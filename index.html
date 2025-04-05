@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-time Vertaler</title>
-    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -33,6 +32,15 @@
         button:disabled {
             background-color: #cccccc;
         }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            min-height: 100px;
+            font-size: 16px;
+        }
         #output {
             margin-top: 20px;
             padding: 15px;
@@ -54,22 +62,39 @@
             border-radius: 5px;
             margin-bottom: 20px;
         }
+        .language-select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Real-time Spraak Vertaler</h1>
+        <h1>Real-time Vertaler</h1>
         
         <div class="instructions">
             <h3>Instructies:</h3>
             <ol>
-                <li>Klik op "Start Opname" om te beginnen</li>
-                <li>Geef toestemming voor de microfoon als daarom wordt gevraagd</li>
-                <li>Spreek duidelijk in een willekeurige taal</li>
+                <li>Selecteer de taal waarin u gaat spreken</li>
+                <li>Klik op "Start Opname" en geef toestemming voor de microfoon</li>
+                <li>Spreek duidelijk in de geselecteerde taal</li>
                 <li>De vertaling verschijnt automatisch</li>
                 <li>Klik op "Stop Opname" als u klaar bent</li>
             </ol>
         </div>
+
+        <select id="sourceLanguage" class="language-select">
+            <option value="en-US">Engels</option>
+            <option value="fr-FR">Frans</option>
+            <option value="de-DE">Duits</option>
+            <option value="es-ES">Spaans</option>
+            <option value="it-IT">Italiaans</option>
+            <option value="nl-NL">Nederlands</option>
+        </select>
 
         <button id="startButton">Start Opname</button>
         <button id="stopButton" disabled>Stop Opname</button>
@@ -77,70 +102,60 @@
         <div id="output">
             <p class="status">Klik op 'Start Opname' om te beginnen...</p>
         </div>
+
+        <textarea id="manualInput" placeholder="Of typ hier uw tekst om te vertalen..."></textarea>
+        <button id="translateButton">Vertaal Getypte Tekst</button>
     </div>
 
     <script>
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
         const output = document.getElementById('output');
-        let recognition;
+        const sourceLanguage = document.getElementById('sourceLanguage');
+        const manualInput = document.getElementById('manualInput');
+        const translateButton = document.getElementById('translateButton');
+        let recognition = null;
 
-        async function checkMicrophonePermission() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-                return true;
-            } catch (err) {
-                console.error('Microfoon toegang geweigerd:', err);
-                return false;
-            }
+        // Controleer of spraakherkenning beschikbaar is
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+        } else if ('SpeechRecognition' in window) {
+            recognition = new SpeechRecognition();
         }
 
-        async function initializeSpeechRecognition() {
-            if (!('webkitSpeechRecognition' in window)) {
-                output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund in deze browser. Probeer Chrome of Edge.</p>';
-                startButton.disabled = true;
-                return;
-            }
-
-            const hasPermission = await checkMicrophonePermission();
-            if (!hasPermission) {
-                output.innerHTML = '<p class="error">Microfoon toegang is vereist voor deze app. Geef toestemming via uw browser instellingen.</p>';
-                return;
-            }
-
-            recognition = new webkitSpeechRecognition();
+        if (recognition) {
             recognition.continuous = true;
             recognition.interimResults = true;
-            recognition.lang = 'auto';
+
+            recognition.onstart = function() {
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                output.innerHTML = '<p class="status">Luisteren...</p>';
+            };
+
+            recognition.onend = function() {
+                startButton.disabled = false;
+                stopButton.disabled = true;
+            };
 
             recognition.onresult = function(event) {
                 const result = event.results[event.results.length - 1];
                 const transcript = result[0].transcript;
-                translateText(transcript);
+                if (result.isFinal) {
+                    translateText(transcript);
+                }
             };
 
             recognition.onerror = function(event) {
                 console.error('Spraakherkenningsfout:', event.error);
-                output.innerHTML += `<p class="error">Fout: ${event.error}</p>`;
-                stopRecording();
+                output.innerHTML = `<p class="error">Fout: ${event.error}. Probeer de getypte invoer hieronder.</p>`;
+                startButton.disabled = false;
+                stopButton.disabled = true;
             };
-        }
-
-        function startRecording() {
-            recognition.start();
+        } else {
+            output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund. Gebruik de getypte invoer hieronder.</p>';
             startButton.disabled = true;
-            stopButton.disabled = false;
-            output.innerHTML = '<p class="status">Luisteren...</p>';
-        }
-
-        function stopRecording() {
-            if (recognition) {
-                recognition.stop();
-            }
-            startButton.disabled = false;
             stopButton.disabled = true;
-            output.innerHTML += '<p class="status">Opname gestopt.</p>';
         }
 
         async function translateText(text) {
@@ -150,21 +165,23 @@
                 const translation = data[0][0][0];
                 
                 output.innerHTML = `
-                    <p><strong>Gehoord:</strong> ${text}</p>
-                    <p><strong>Vertaling:</strong> ${translation}</p>
+                    <p><strong>Originele tekst:</strong> ${text}</p>
+                    <p><strong>Nederlandse vertaling:</strong> ${translation}</p>
                 `;
             } catch (error) {
                 console.error('Vertalingsfout:', error);
-                output.innerHTML += `<p class="error">Vertalingsfout: ${error.message}</p>`;
+                output.innerHTML = `<p class="error">Vertalingsfout: ${error.message}</p>`;
             }
         }
 
-        // Initialize the app
-        initializeSpeechRecognition();
+        startButton.onclick = function() {
+            if (recognition) {
+                recognition.lang = sourceLanguage.value;
+                recognition.start();
+            }
+        };
 
-        // Event listeners
-        startButton.onclick = startRecording;
-        stopButton.onclick = stopRecording;
-    </script>
-</body>
-</html>
+        stopButton.onclick = function() {
+            if (recognition) {
+                recognition.stop();
+                output.innerHTML +=
