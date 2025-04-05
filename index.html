@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-time Vertaler</title>
+    <title>Tekst Vertaler</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -29,17 +29,23 @@
             margin: 10px 0;
             width: 100%;
         }
-        button:disabled {
-            background-color: #cccccc;
-        }
-        textarea {
+        select {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             margin: 10px 0;
             border: 1px solid #ddd;
             border-radius: 5px;
-            min-height: 100px;
             font-size: 16px;
+        }
+        textarea {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            min-height: 120px;
+            font-size: 16px;
+            box-sizing: border-box;
         }
         #output {
             margin-top: 20px;
@@ -47,172 +53,115 @@
             border: 1px solid #ddd;
             border-radius: 5px;
             min-height: 100px;
-        }
-        .status {
-            color: #666;
-            font-style: italic;
-        }
-        .error {
-            color: #ff0000;
-            margin: 10px 0;
-        }
-        .success {
-            color: #4CAF50;
-            margin: 10px 0;
-        }
-        .instructions {
             background-color: #f8f9fa;
-            padding: 15px;
+        }
+        .translation {
+            font-size: 18px;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e8f5e9;
             border-radius: 5px;
-            margin-bottom: 20px;
+        }
+        .common-phrases {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff3e0;
+            border-radius: 5px;
+        }
+        .phrase-button {
+            background-color: #ff9800;
+            margin: 5px;
+            padding: 10px;
+            font-size: 14px;
+            width: auto;
+            display: inline-block;
+        }
+        .clear-button {
+            background-color: #f44336;
+        }
+        .copy-button {
+            background-color: #2196F3;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Real-time Vertaler</h1>
+        <h1>Snelle Vertaler</h1>
         
-        <div class="instructions">
-            <h3>Instructies:</h3>
-            <ol>
-                <li>Klik op "Controleer Microfoon" om toestemming te geven</li>
-                <li>Als dat lukt, klik op "Start Opname"</li>
-                <li>Spreek duidelijk in een willekeurige taal</li>
-                <li>Of gebruik het tekstveld onderaan om tekst te typen</li>
-            </ol>
+        <div class="common-phrases">
+            <h3>Veelgebruikte zinnen:</h3>
+            <button class="phrase-button" onclick="insertPhrase('How are you?')">How are you?</button>
+            <button class="phrase-button" onclick="insertPhrase('Thank you very much')">Thank you very much</button>
+            <button class="phrase-button" onclick="insertPhrase('Where is the bathroom?')">Where is the bathroom?</button>
+            <button class="phrase-button" onclick="insertPhrase('Can you help me?')">Can you help me?</button>
+            <button class="phrase-button" onclick="insertPhrase('I don\'t understand')">I don't understand</button>
         </div>
 
-        <button id="checkMicButton">1. Controleer Microfoon</button>
-        <button id="startButton" disabled>2. Start Opname</button>
-        <button id="stopButton" disabled>3. Stop Opname</button>
+        <select id="sourceLanguage">
+            <option value="en">Engels</option>
+            <option value="fr">Frans</option>
+            <option value="de">Duits</option>
+            <option value="es">Spaans</option>
+            <option value="it">Italiaans</option>
+            <option value="auto">Automatisch detecteren</option>
+        </select>
+
+        <textarea id="manualInput" placeholder="Typ of plak hier uw tekst om te vertalen...&#10;De vertaling verschijnt automatisch na het typen."></textarea>
+        
+        <button class="clear-button" onclick="clearText()">Wis Tekst</button>
         
         <div id="output">
-            <p class="status">Klik eerst op 'Controleer Microfoon'...</p>
+            <p>De Nederlandse vertaling verschijnt hier...</p>
         </div>
-
-        <div class="instructions">
-            <h3>Alternatief: Typ uw tekst</h3>
-            <p>Als spraakherkenning niet werkt, gebruik dan het tekstveld hieronder:</p>
-        </div>
-        <textarea id="manualInput" placeholder="Typ hier uw tekst om te vertalen..."></textarea>
-        <button id="translateButton">Vertaal Getypte Tekst</button>
+        
+        <button class="copy-button" onclick="copyTranslation()">Kopieer Vertaling</button>
     </div>
 
     <script>
-        const checkMicButton = document.getElementById('checkMicButton');
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
-        const output = document.getElementById('output');
         const manualInput = document.getElementById('manualInput');
-        const translateButton = document.getElementById('translateButton');
-        let recognition = null;
+        const output = document.getElementById('output');
+        const sourceLanguage = document.getElementById('sourceLanguage');
+        let lastTranslation = '';
 
-        // Controleer microfoontoestemming
-        async function checkMicrophonePermission() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-                output.innerHTML = '<p class="success">✓ Microfoon toegang verleend! U kunt nu op "Start Opname" klikken.</p>';
-                startButton.disabled = false;
-                checkMicButton.disabled = true;
-                initializeSpeechRecognition();
-                return true;
-            } catch (err) {
-                output.innerHTML = `
-                    <p class="error">× Microfoon toegang geweigerd of niet beschikbaar.</p>
-                    <p>Tips:</p>
-                    <ul>
-                        <li>Controleer of u toestemming heeft gegeven voor de microfoon</li>
-                        <li>Gebruik Chrome (Android) of Safari (iPhone)</li>
-                        <li>Of gebruik het tekstveld onderaan om tekst te typen</li>
-                    </ul>
-                `;
-                return false;
-            }
+        function insertPhrase(phrase) {
+            manualInput.value = phrase;
+            translateText(phrase);
         }
 
-        function initializeSpeechRecognition() {
-            if ('webkitSpeechRecognition' in window) {
-                recognition = new webkitSpeechRecognition();
-            } else if ('SpeechRecognition' in window) {
-                recognition = new SpeechRecognition();
-            }
+        function clearText() {
+            manualInput.value = '';
+            output.innerHTML = '<p>De Nederlandse vertaling verschijnt hier...</p>';
+        }
 
-            if (recognition) {
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.lang = 'auto';
-
-                recognition.onstart = function() {
-                    startButton.disabled = true;
-                    stopButton.disabled = false;
-                    output.innerHTML = '<p class="status">Luisteren...</p>';
-                };
-
-                recognition.onend = function() {
-                    startButton.disabled = false;
-                    stopButton.disabled = true;
-                };
-
-                recognition.onresult = function(event) {
-                    const result = event.results[event.results.length - 1];
-                    const transcript = result[0].transcript;
-                    if (result.isFinal) {
-                        translateText(transcript);
-                    }
-                };
-
-                recognition.onerror = function(event) {
-                    console.error('Spraakherkenningsfout:', event.error);
-                    output.innerHTML = `<p class="error">Fout: ${event.error}. Probeer de getypte invoer hieronder.</p>`;
-                    startButton.disabled = false;
-                    stopButton.disabled = true;
-                };
-            } else {
-                output.innerHTML = '<p class="error">Spraakherkenning wordt niet ondersteund. Gebruik de getypte invoer hieronder.</p>';
-                startButton.disabled = true;
-                stopButton.disabled = true;
+        async function copyTranslation() {
+            try {
+                await navigator.clipboard.writeText(lastTranslation);
+                alert('Vertaling gekopieerd naar klembord!');
+            } catch (err) {
+                alert('Kon de tekst niet kopiëren: ' + err);
             }
         }
 
         async function translateText(text) {
+            if (!text.trim()) return;
+            
             try {
-                const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=nl&dt=t&q=${encodeURIComponent(text)}`);
+                const sl = sourceLanguage.value;
+                const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=nl&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await response.json();
                 const translation = data[0][0][0];
+                lastTranslation = translation;
                 
                 output.innerHTML = `
-                    <p><strong>Originele tekst:</strong> ${text}</p>
-                    <p><strong>Nederlandse vertaling:</strong> ${translation}</p>
+                    <p><strong>Originele tekst:</strong></p>
+                    <p>${text}</p>
+                    <p><strong>Nederlandse vertaling:</strong></p>
+                    <p class="translation">${translation}</p>
                 `;
             } catch (error) {
-                console.error('Vertalingsfout:', error);
-                output.innerHTML = `<p class="error">Vertalingsfout: ${error.message}</p>`;
+                output.innerHTML = `<p style="color: red;">Vertalingsfout: ${error.message}</p>`;
             }
         }
-
-        // Event Listeners
-        checkMicButton.onclick = checkMicrophonePermission;
-
-        startButton.onclick = function() {
-            if (recognition) {
-                recognition.start();
-            }
-        };
-
-        stopButton.onclick = function() {
-            if (recognition) {
-                recognition.stop();
-                output.innerHTML += '<p class="status">Opname gestopt.</p>';
-            }
-        };
-
-        translateButton.onclick = function() {
-            const text = manualInput.value.trim();
-            if (text) {
-                translateText(text);
-            }
-        };
 
         // Automatische vertaling bij typen
         let typingTimer;
@@ -223,7 +172,15 @@
                 if (text) {
                     translateText(text);
                 }
-            }, 1000);
+            }, 600); // Wacht 0.6 seconde na het typen
+        });
+
+        // Vertaal ook als de brontaal verandert
+        sourceLanguage.addEventListener('change', function() {
+            const text = manualInput.value.trim();
+            if (text) {
+                translateText(text);
+            }
         });
     </script>
 </body>
